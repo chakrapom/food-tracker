@@ -38,12 +38,12 @@ So far today consumed: protein ${totals.protein?.toFixed(1) || 0}g, carbs ${tota
 
 Still needs: protein ${remaining.protein.toFixed(1)}g, carbs ${remaining.carbs.toFixed(1)}g, fat ${remaining.fat.toFixed(1)}g, fiber ${remaining.fiber.toFixed(1)}g.
 
-Remaining meal slots: ${remainingMeals} (Bữa ${mealsLogged + 1} to Bữa 6).
+Remaining meal slots: ${remainingMeals} (Meal ${mealsLogged + 1} to Meal 6).
 
 Available foods:
 ${foodList}
 
-Be direct, practical, Vietnamese food-aware. 2-3 sentences max. Suggest specific foods from the list above that would close the gap across the remaining meals. If everything is on track, say so briefly.`;
+Be direct, practical, Vietnamese food-aware. 2-3 sentences max. Suggest specific foods from the list above that would close the gap across the remaining meals. If everything is on track, say so briefly. Use plain text only — no markdown, no asterisks, no bold, no bullet points.`;
 
   try {
     const message = await client.messages.create({

@@ -60,7 +60,7 @@ export default function AISuggestion({ totals, dayType, mealsLogged, date }) {
 
       {suggestion ? (
         <div className="bg-slate-700/50 rounded-xl p-4 text-slate-200 text-sm leading-relaxed whitespace-pre-wrap">
-          {suggestion}
+          {suggestion.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1')}
         </div>
       ) : !loading && (
         <p className="text-slate-500 text-sm italic">
