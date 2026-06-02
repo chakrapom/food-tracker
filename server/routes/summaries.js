@@ -1,0 +1,99 @@
+const express = require('express');
+const router = express.Router();
+const db = require('../db');
+
+const TARGETS = {
+  training: { protein: 150, carbs: 40, fat: 30, fiber: 30 },
+  rest:     { protein: 150, carbs: 20, fat: 30, fiber: 30 },
+};
+
+// GET /api/summaries/week — last 7 days with full macro breakdown
+router.get('/week', (req, res) => {
+  const rows = db.prepare(`
+    SELECT d.date, d.day_type,
+      COALESCE(SUM(m.protein), 0) as protein,
+      COALESCE(SUM(m.carbs),   0) as carbs,
+      COALESCE(SUM(m.fat),     0) as fat,
+      COALESCE(SUM(m.fiber),   0) as fiber
+    FROM days d
+    LEFT JOIN meals m ON m.day_id = d.id
+    WHERE d.date >= date('now', '-6 days')
+    GROUP BY d.id
+    ORDER BY d.date ASC
+  `).all();
+
+  if (rows.length === 0) return res.json({ days: [], averages: null, best: null, worst: null, trends: null });
+
+  const days = rows.map(r => {
+    const t = TARGETS[r.day_type] || TARGETS.training;
+    return {
+      date: r.date,
+      day_type: r.day_type,
+      protein: r.protein,
+      carbs:   r.carbs,
+      fat:     r.fat,
+      fiber:   r.fiber,
+      targets: t,
+      hit: {
+        protein: r.protein >= t.protein,
+        carbs:   r.carbs   <= t.carbs * 1.1,  // within 10% over
+        fat:     r.fat     >= t.fat * 0.8,    // within 20% under
+        fiber:   r.fiber   >= t.fiber * 0.8,  // within 20% under
+      },
+    };
+  });
+
+  const n = days.length;
+  const averages = {
+    protein: days.reduce((s, d) => s + d.protein, 0) / n,
+    carbs:   days.reduce((s, d) => s + d.carbs,   0) / n,
+    fat:     days.reduce((s, d) => s + d.fat,     0) / n,
+    fiber:   days.reduce((s, d) => s + d.fiber,   0) / n,
+  };
+
+  const hitRates = {
+    protein: days.filter(d => d.hit.protein).length / n,
+    carbs:   days.filter(d => d.hit.carbs).length   / n,
+    fat:     days.filter(d => d.hit.fat).length     / n,
+    fiber:   days.filter(d => d.hit.fiber).length   / n,
+  };
+
+  const best  = days.reduce((a, b) => b.protein > a.protein ? b : a);
+  const worst = days.reduce((a, b) => b.protein < a.protein ? b : a);
+
+  // Trend: compare first half vs second half of the week
+  const half = Math.floor(n / 2);
+  const trends = n >= 4 ? {
+    protein: averages.protein - (days.slice(0, half).reduce((s, d) => s + d.protein, 0) / half),
+    carbs:   averages.carbs   - (days.slice(0, half).reduce((s, d) => s + d.carbs,   0) / half),
+    fat:     averages.fat     - (days.slice(0, half).reduce((s, d) => s + d.fat,     0) / half),
+    fiber:   averages.fiber   - (days.slice(0, half).reduce((s, d) => s + d.fiber,   0) / half),
+  } : null;
+
+  // Persist summaries
+  const upsert = db.prepare(`
+    INSERT INTO summaries (day_id, protein_total, carbs_total, fat_total, fiber_total, protein_hit, verdict)
+    VALUES ((SELECT id FROM days WHERE date = ?), ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(day_id) DO UPDATE SET
+      protein_total = excluded.protein_total,
+      carbs_total   = excluded.carbs_total,
+      fat_total     = excluded.fat_total,
+      fiber_total   = excluded.fiber_total,
+      protein_hit   = excluded.protein_hit,
+      verdict       = excluded.verdict
+  `);
+  const saveSummaries = db.transaction(() => {
+    for (const d of days) {
+      const hits = Object.values(d.hit).filter(Boolean).length;
+      const verdict = hits === 4 ? 'Perfect day' :
+                      hits === 3 ? 'Good day' :
+                      hits === 2 ? 'Average day' : 'Needs work';
+      upsert.run(d.date, d.protein, d.carbs, d.fat, d.fiber, d.hit.protein ? 1 : 0, verdict);
+    }
+  });
+  saveSummaries();
+
+  res.json({ days, averages, hitRates, best, worst, trends });
+});
+
+module.exports = router;

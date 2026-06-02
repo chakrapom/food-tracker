@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm create *)",
+      "Bash(npm install *)",
+      "Bash(npm --version)",
+      "Bash(node -e ' *)",
+      "Bash(node index.js)",
+      "Bash(curl -s http://localhost:3001/api/health)",
+      "Bash(curl -s http://localhost:3001/api/foods)",
+      "Bash(kill %1)",
+      "Bash(npm run *)",
+      "Bash(xargs kill -9)",
+      "Bash(chromium-cli *)",
+      "Bash(npx playwright *)",
+      "Read(//private/tmp/**)",
+      "Bash(npm init *)",
+      "Bash(node pw-test.mjs)",
+      "Bash(curl -s -X POST http://localhost:3001/api/suggest/parse -H 'Content-Type: application/json' -d '{\"text\":\"300g boiled chicken breast\"}')",
+      "Bash(curl -s http://localhost:3001/api/meals/day/2026-06-03)",
+      "Bash(node -e \"const d=require\\('fs'\\).readFileSync\\('/dev/stdin','utf8'\\); const r=JSON.parse\\(d\\); console.log\\('foods:', r.length\\)\")",
+      "Bash(curl -s http://localhost:3001/api/meals/2026-06-03)",
+      "Bash(curl -s http://localhost:3001/api/meals/totals/2026-06-03)",
+      "Bash(curl -s http://localhost:3001/api/meals/history/week)",
+      "Bash(curl -s -X POST http://localhost:3001/api/suggest/parse -H 'Content-Type: application/json' -d '{\"text\":\"200g pork and 1 egg\"}')",
+      "Bash(curl -s http://localhost:3001/)",
+      "Bash(curl -s http://localhost:3001/api/summaries/week)"
+    ]
+  }
+}
