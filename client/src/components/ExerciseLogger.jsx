@@ -10,9 +10,9 @@ const MODALITIES = [
 ];
 
 const PACE_OPTIONS = [
-  { value: 5, label: '5 km/h (easy jog)' },
-  { value: 6, label: '6 km/h (moderate)' },
-  { value: 7, label: '7 km/h (fast)' },
+  { value: 5, label: '5 min/km (fast)' },
+  { value: 6, label: '6 min/km (moderate)' },
+  { value: 7, label: '7 min/km (easy jog)' },
 ];
 
 const WALK_OPTIONS = [
@@ -26,7 +26,7 @@ const RPE_OPTIONS = [
 ];
 
 function entryLabel(ex) {
-  if (ex.modality === 'run') return `Run @ ${ex.pace} km/h`;
+  if (ex.modality === 'run') return `Run @ ${ex.pace} min/km`;
   if (ex.modality === 'walk') return ex.pace ? `Walk (Incline ~${ex.pace}%)` : 'Walk (Flat)';
   if (ex.modality === 'resistance') return ex.pace >= 8 ? 'Resistance — Hard (RPE ≥ 8)' : 'Resistance — Easy (RPE < 8)';
   return MODALITIES.find(m => m.value === ex.modality)?.label || ex.modality;

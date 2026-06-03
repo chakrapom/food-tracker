@@ -2,17 +2,18 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
+// MET-based rates for 80 kg body weight: (MET × 80 × 3.5) / 200
 const CAL_PER_MIN = {
-  walk_flat:       4,
-  walk_incline:    6,
-  run_5:           8,
-  run_6:           10,
-  run_7:           12,
-  tennis:          7,
-  table_tennis:    4,
-  swim:            8,
+  walk_flat:       5,
+  walk_incline:    8,
+  run_5:           17,  // 5 min/km ≈ 12 km/h, MET 12
+  run_6:           15,  // 6 min/km ≈ 10 km/h, MET 10.5
+  run_7:           13,  // 7 min/km ≈ 8.6 km/h, MET 9
+  tennis:          10,
+  table_tennis:    6,
+  swim:            10,
   resistance_hard: 8,
-  resistance_easy: 5,
+  resistance_easy: 6,
 };
 
 function calcBurn(modality, pace, duration) {

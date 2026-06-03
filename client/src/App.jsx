@@ -46,6 +46,7 @@ export default function App() {
   const [showCustomForm, setShowCustomForm] = useState(false);
   const [showAI, setShowAI] = useState(false);
   const [caloriePreset, setCaloriePreset] = useState(loadPreset);
+  const [pendingDelete, setPendingDelete] = useState(null);
 
   const exerciseBurn = exercises.reduce((s, e) => s + (e.calories_burned || 0), 0);
 
@@ -104,18 +105,43 @@ export default function App() {
     }));
   }
 
-  async function handleDeleteMeal(id) {
-    const meal = meals.find(m => m.id === id);
-    await fetch(`/api/meals/entry/${id}`, { method: 'DELETE' });
-    setMeals(prev => prev.filter(m => m.id !== id));
-    if (meal) {
-      setTotals(prev => ({
-        protein: Math.max(0, prev.protein - (meal.protein || 0)),
-        carbs:   Math.max(0, prev.carbs   - (meal.carbs   || 0)),
-        fat:     Math.max(0, prev.fat     - (meal.fat     || 0)),
-        fiber:   Math.max(0, prev.fiber   - (meal.fiber   || 0)),
-      }));
+  function handleDeleteMeal(id) {
+    // Flush any previous pending delete immediately
+    if (pendingDelete) {
+      clearTimeout(pendingDelete.timeoutId);
+      fetch(`/api/meals/entry/${pendingDelete.meal.id}`, { method: 'DELETE' });
     }
+
+    const meal = meals.find(m => m.id === id);
+    if (!meal) return;
+
+    setMeals(prev => prev.filter(m => m.id !== id));
+    setTotals(prev => ({
+      protein: Math.max(0, prev.protein - (meal.protein || 0)),
+      carbs:   Math.max(0, prev.carbs   - (meal.carbs   || 0)),
+      fat:     Math.max(0, prev.fat     - (meal.fat     || 0)),
+      fiber:   Math.max(0, prev.fiber   - (meal.fiber   || 0)),
+    }));
+
+    const timeoutId = setTimeout(() => {
+      fetch(`/api/meals/entry/${id}`, { method: 'DELETE' });
+      setPendingDelete(null);
+    }, 3000);
+
+    setPendingDelete({ meal, timeoutId });
+  }
+
+  function handleUndoDelete() {
+    if (!pendingDelete) return;
+    clearTimeout(pendingDelete.timeoutId);
+    setMeals(prev => [...prev, pendingDelete.meal].sort((a, b) => a.id - b.id));
+    setTotals(prev => ({
+      protein: prev.protein + (pendingDelete.meal.protein || 0),
+      carbs:   prev.carbs   + (pendingDelete.meal.carbs   || 0),
+      fat:     prev.fat     + (pendingDelete.meal.fat     || 0),
+      fiber:   prev.fiber   + (pendingDelete.meal.fiber   || 0),
+    }));
+    setPendingDelete(null);
   }
 
   async function handleMoveMeal(id, newMealNumber) {
@@ -239,7 +265,7 @@ export default function App() {
               readOnly={!isToday && !day}
             />
 
-            {day && isToday && (
+            {day && (
               <ExerciseLogger
                 exercises={exercises}
                 onAdd={handleAddExercise}
@@ -292,6 +318,18 @@ export default function App() {
           onAdd={food => setFoods(prev => [...prev, food])}
           onClose={() => setShowCustomForm(false)}
         />
+      )}
+
+      {pendingDelete && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-slate-700 border border-slate-600 text-slate-200 text-sm px-4 py-3 rounded-xl shadow-xl whitespace-nowrap">
+          <span className="text-slate-400">Removed <span className="text-slate-200">{pendingDelete.meal.food_name}</span></span>
+          <button
+            onClick={handleUndoDelete}
+            className="text-blue-400 hover:text-blue-300 font-semibold transition-colors"
+          >
+            Undo
+          </button>
+        </div>
       )}
     </div>
   );
