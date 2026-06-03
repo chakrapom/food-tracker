@@ -6,22 +6,17 @@ import AISuggestion from './components/AISuggestion';
 import StreakSummary from './components/StreakSummary';
 import WeeklyReport from './components/WeeklyReport';
 import CustomFoodForm from './components/CustomFoodForm';
+import ExerciseLogger from './components/ExerciseLogger';
 
 function localToday() {
   const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function addDays(dateStr, n) {
   const d = new Date(dateStr + 'T00:00:00');
   d.setDate(d.getDate() + n);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function formatDisplayDate(dateStr) {
@@ -29,8 +24,12 @@ function formatDisplayDate(dateStr) {
   if (dateStr === today) return 'Today';
   if (dateStr === addDays(today, -1)) return 'Yesterday';
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', {
-    weekday: 'short', month: 'short', day: 'numeric'
+    weekday: 'short', month: 'short', day: 'numeric',
   });
+}
+
+function loadPreset() {
+  return localStorage.getItem('caloriePreset') || 'moderate';
 }
 
 export default function App() {
@@ -42,27 +41,39 @@ export default function App() {
   const [totals, setTotals] = useState({ protein: 0, carbs: 0, fat: 0, fiber: 0 });
   const [foods, setFoods] = useState([]);
   const [history, setHistory] = useState([]);
+  const [exercises, setExercises] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCustomForm, setShowCustomForm] = useState(false);
+  const [showAI, setShowAI] = useState(false);
+  const [caloriePreset, setCaloriePreset] = useState(loadPreset);
+
+  const exerciseBurn = exercises.reduce((s, e) => s + (e.calories_burned || 0), 0);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
-    const [dayRes, mealsRes, totalsRes, foodsRes, historyRes] = await Promise.all([
+    const [dayRes, mealsRes, totalsRes, foodsRes, historyRes, exerciseRes] = await Promise.all([
       fetch(`/api/meals/day/${date}`).then(r => r.json()),
       fetch(`/api/meals/${date}`).then(r => r.json()),
       fetch(`/api/meals/totals/${date}`).then(r => r.json()),
       fetch('/api/foods').then(r => r.json()),
       fetch('/api/meals/history/week').then(r => r.json()),
+      fetch(`/api/exercise/${date}`).then(r => r.json()),
     ]);
     setDay(dayRes);
     setMeals(mealsRes);
     setTotals(totalsRes);
     setFoods(foodsRes);
     setHistory(historyRes);
+    setExercises(exerciseRes);
     setLoading(false);
   }, [date]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  function handleChangeCaloriePreset(preset) {
+    setCaloriePreset(preset);
+    localStorage.setItem('caloriePreset', preset);
+  }
 
   async function handleSelectDayType(type) {
     const res = await fetch('/api/meals/day', {
@@ -70,8 +81,7 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ date, day_type: type }),
     });
-    const newDay = await res.json();
-    setDay(newDay);
+    setDay(await res.json());
   }
 
   async function handleChangeDayType() {
@@ -108,6 +118,31 @@ export default function App() {
     }
   }
 
+  async function handleMoveMeal(id, newMealNumber) {
+    const res = await fetch(`/api/meals/entry/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ meal_number: newMealNumber }),
+    });
+    const updated = await res.json();
+    setMeals(prev => prev.map(m => m.id === id ? updated : m));
+  }
+
+  async function handleAddExercise(entry) {
+    const res = await fetch('/api/exercise', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...entry, date }),
+    });
+    const ex = await res.json();
+    setExercises(prev => [...prev, ex]);
+  }
+
+  async function handleDeleteExercise(id) {
+    await fetch(`/api/exercise/${id}`, { method: 'DELETE' });
+    setExercises(prev => prev.filter(e => e.id !== id));
+  }
+
   const isToday = date === today;
   const mealsLogged = [...new Set(meals.map(m => m.meal_number))].length;
 
@@ -132,39 +167,46 @@ export default function App() {
           <span className="text-2xl font-bold text-white tracking-tight">Jimmy Eats 🍖</span>
         </div>
 
-        {/* Header with date navigation */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setDate(d => addDays(d, -1))}
-              className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors text-lg"
-            >‹</button>
-            <div>
-              <h1 className="text-xl font-bold text-white leading-tight">
-                {formatDisplayDate(date)}
-              </h1>
-              <p className="text-slate-500 text-xs">{date}</p>
+        {/* Header: date nav row, then streak right-justified below */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setDate(d => addDays(d, -1))}
+                className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors text-lg"
+              >‹</button>
+              <div>
+                <h1 className="text-xl font-bold text-white leading-tight">
+                  {formatDisplayDate(date)}
+                </h1>
+                <p className="text-slate-500 text-xs">{date}</p>
+              </div>
+              <button
+                onClick={() => setDate(d => addDays(d, 1))}
+                disabled={isToday}
+                className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-30 disabled:cursor-not-allowed text-slate-300 transition-colors text-lg"
+              >›</button>
+              {!isToday && (
+                <button
+                  onClick={() => setDate(today)}
+                  className="text-xs px-2 py-1 rounded-md bg-blue-700 hover:bg-blue-600 text-white transition-colors"
+                >
+                  Today
+                </button>
+              )}
             </div>
             <button
-              onClick={() => setDate(d => addDays(d, 1))}
-              disabled={isToday}
-              className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-30 disabled:cursor-not-allowed text-slate-300 transition-colors text-lg"
-            >›</button>
-            {!isToday && (
-              <button
-                onClick={() => setDate(today)}
-                className="text-xs px-2 py-1 rounded-md bg-blue-700 hover:bg-blue-600 text-white transition-colors"
-              >
-                Today
-              </button>
-            )}
+              onClick={() => setShowCustomForm(true)}
+              className="text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
+            >
+              + Add food
+            </button>
           </div>
-          <button
-            onClick={() => setShowCustomForm(true)}
-            className="text-xs px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
-          >
-            + Add food
-          </button>
+
+          {/* Streak — left-justified, below date nav */}
+          <div className="flex justify-start">
+            <StreakSummary history={history} onSelectDate={setDate} />
+          </div>
         </div>
 
         {/* Past day with no data */}
@@ -180,6 +222,9 @@ export default function App() {
                 totals={totals}
                 dayType={day.day_type}
                 onChangeDayType={handleChangeDayType}
+                exerciseBurn={exerciseBurn}
+                caloriePreset={caloriePreset}
+                onChangeCaloriePreset={handleChangeCaloriePreset}
               />
             )}
 
@@ -190,26 +235,57 @@ export default function App() {
               dayType={day?.day_type || 'training'}
               onAdd={handleAddMeal}
               onDelete={handleDeleteMeal}
+              onMove={handleMoveMeal}
               readOnly={!isToday && !day}
             />
 
             {day && isToday && (
-              <AISuggestion
-                totals={totals}
-                dayType={day.day_type}
-                mealsLogged={mealsLogged}
-                date={date}
+              <ExerciseLogger
+                exercises={exercises}
+                onAdd={handleAddExercise}
+                onDelete={handleDeleteExercise}
               />
             )}
           </>
         )}
 
-        <StreakSummary history={history} onSelectDate={setDate} />
+        <WeeklyReport onSelectDate={setDate} caloriePreset={caloriePreset} />
 
-        <WeeklyReport onSelectDate={setDate} />
-
-        <div className="h-8" />
+        <div className="h-20" />
       </div>
+
+      {/* Floating "What to eat?" button */}
+      {day && isToday && (
+        <button
+          onClick={() => setShowAI(true)}
+          className="fixed bottom-6 right-6 z-40 bg-purple-600 hover:bg-purple-500 active:scale-95 text-white rounded-full w-14 h-14 flex items-center justify-center shadow-xl transition-all text-3xl"
+          title="What should I eat next?"
+        >
+          👨‍🍳
+        </button>
+      )}
+
+      {/* AI Coach modal */}
+      {showAI && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center p-4 pb-6 sm:items-center">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowAI(false)}
+          />
+          <div className="relative w-full max-w-md">
+            <AISuggestion
+              totals={totals}
+              dayType={day.day_type}
+              mealsLogged={mealsLogged}
+              meals={meals}
+              date={date}
+              exerciseBurn={exerciseBurn}
+              caloriePreset={caloriePreset}
+              onClose={() => setShowAI(false)}
+            />
+          </div>
+        </div>
+      )}
 
       {showCustomForm && (
         <CustomFoodForm

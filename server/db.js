@@ -47,6 +47,16 @@ db.exec(`
     protein_hit INTEGER,
     verdict TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS exercise (
+    id INTEGER PRIMARY KEY,
+    day_id INTEGER,
+    modality TEXT,
+    pace INTEGER,
+    duration_minutes INTEGER,
+    calories_burned INTEGER,
+    created_at TEXT
+  );
 `);
 
 const ALL_PRESETS = [

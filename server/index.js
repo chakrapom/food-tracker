@@ -10,6 +10,7 @@ app.use('/api/meals', require('./routes/meals'));
 app.use('/api/foods', require('./routes/foods'));
 app.use('/api/suggest', require('./routes/suggest'));
 app.use('/api/summaries', require('./routes/summaries'));
+app.use('/api/exercise', require('./routes/exercise'));
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 

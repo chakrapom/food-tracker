@@ -35,6 +35,18 @@ router.post('/day', (req, res) => {
   res.json(day);
 });
 
+// PATCH move meal entry to a different slot — must be before /:date
+router.patch('/entry/:id', (req, res) => {
+  const { meal_number } = req.body;
+  if (!meal_number || meal_number < 1 || meal_number > 6) {
+    return res.status(400).json({ error: 'meal_number must be 1–6' });
+  }
+  const meal = db.prepare('SELECT * FROM meals WHERE id = ?').get(req.params.id);
+  if (!meal) return res.status(404).json({ error: 'Not found' });
+  db.prepare('UPDATE meals SET meal_number = ? WHERE id = ?').run(meal_number, req.params.id);
+  res.json(db.prepare('SELECT * FROM meals WHERE id = ?').get(req.params.id));
+});
+
 // DELETE meal entry — must be before /:date
 router.delete('/entry/:id', (req, res) => {
   const meal = db.prepare('SELECT * FROM meals WHERE id = ?').get(req.params.id);

@@ -1,7 +1,13 @@
 import { useState } from 'react';
 
-function MealSlot({ number, entries, foods, onAdd, onDelete, isExpanded, onToggle }) {
-  const [mode, setMode] = useState('preset'); // 'preset' | 'freetext'
+const MEAL_NAMES = ['Pre Workout', 'Breakfast', 'Lunch', 'Snack', 'Dinner', 'Supper'];
+
+function entryCalories(e) {
+  return Math.round((e.protein || 0) * 4 + (e.carbs || 0) * 4 + (e.fat || 0) * 9);
+}
+
+function MealSlot({ number, entries, foods, onAdd, onDelete, onMove, isExpanded, onToggle }) {
+  const [mode, setMode] = useState('preset');
   const [selectedFood, setSelectedFood] = useState('');
   const [servings, setServings] = useState(1);
   const [freeText, setFreeText] = useState('');
@@ -11,14 +17,14 @@ function MealSlot({ number, entries, foods, onAdd, onDelete, isExpanded, onToggl
 
   const mealTotal = entries.reduce((acc, e) => ({
     protein: acc.protein + (e.protein || 0),
-    carbs: acc.carbs + (e.carbs || 0),
-    fat: acc.fat + (e.fat || 0),
-    fiber: acc.fiber + (e.fiber || 0),
+    carbs:   acc.carbs   + (e.carbs   || 0),
+    fat:     acc.fat     + (e.fat     || 0),
+    fiber:   acc.fiber   + (e.fiber   || 0),
   }), { protein: 0, carbs: 0, fat: 0, fiber: 0 });
 
-  const filtered = foods.filter(f =>
-    f.name.toLowerCase().includes(search.toLowerCase())
-  );
+  const mealCal = Math.round(mealTotal.protein * 4 + mealTotal.carbs * 4 + mealTotal.fat * 9);
+
+  const filtered = foods.filter(f => f.name.toLowerCase().includes(search.toLowerCase()));
 
   async function handleAddPreset() {
     const food = foods.find(f => f.id === parseInt(selectedFood));
@@ -28,9 +34,9 @@ function MealSlot({ number, entries, foods, onAdd, onDelete, isExpanded, onToggl
       meal_number: number,
       food_name: `${food.name} × ${servings}`,
       protein: food.protein * servings,
-      carbs: food.carbs * servings,
-      fat: food.fat * servings,
-      fiber: food.fiber * servings,
+      carbs:   food.carbs   * servings,
+      fat:     food.fat     * servings,
+      fiber:   food.fiber   * servings,
       serving_note: `${servings} × ${food.serving_label}`,
     });
     setSelectedFood('');
@@ -54,18 +60,20 @@ function MealSlot({ number, entries, foods, onAdd, onDelete, isExpanded, onToggl
           meal_number: number,
           food_name: item.food_name,
           protein: item.protein || 0,
-          carbs: item.carbs || 0,
-          fat: item.fat || 0,
-          fiber: item.fiber || 0,
+          carbs:   item.carbs   || 0,
+          fat:     item.fat     || 0,
+          fiber:   item.fiber   || 0,
           serving_note: item.serving_note || '',
         });
       }
       setFreeText('');
-    } catch (e) {
+    } catch {
       alert('Could not parse food text. Try again.');
     }
     setParsing(false);
   }
+
+  const name = MEAL_NAMES[number - 1];
 
   return (
     <div className="bg-slate-800 rounded-xl overflow-hidden mb-3">
@@ -74,10 +82,10 @@ function MealSlot({ number, entries, foods, onAdd, onDelete, isExpanded, onToggl
         className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-750 transition-colors text-left"
       >
         <div className="flex items-center gap-3">
-          <span className="text-slate-400 font-medium text-sm w-14">Meal {number}</span>
+          <span className="text-slate-300 font-medium text-sm w-28">{name}</span>
           {entries.length > 0 ? (
             <span className="text-xs text-slate-500">
-              {entries.length} items · P:{mealTotal.protein.toFixed(0)}g C:{mealTotal.carbs.toFixed(0)}g F:{mealTotal.fat.toFixed(0)}g
+              {entries.length} items · {mealCal} kcal · P:{mealTotal.protein.toFixed(0)}g C:{mealTotal.carbs.toFixed(0)}g F:{mealTotal.fat.toFixed(0)}g
             </span>
           ) : (
             <span className="text-xs text-slate-600 italic">Nothing logged</span>
@@ -91,18 +99,33 @@ function MealSlot({ number, entries, foods, onAdd, onDelete, isExpanded, onToggl
           {entries.length > 0 && (
             <div className="mt-3 mb-3 space-y-1">
               {entries.map(e => (
-                <div key={e.id} className="flex items-center justify-between bg-slate-700/50 rounded-lg px-3 py-2 text-sm">
-                  <div>
+                <div key={e.id} className="flex items-start justify-between bg-slate-700/50 rounded-lg px-3 py-2 text-sm">
+                  <div className="flex-1 min-w-0">
                     <span className="text-slate-200">{e.food_name}</span>
                     {e.serving_note && <span className="text-slate-500 ml-2 text-xs">({e.serving_note})</span>}
                     <div className="text-slate-500 text-xs mt-0.5">
-                      P:{e.protein}g · C:{e.carbs}g · Fat:{e.fat}g · Fiber:{e.fiber}g
+                      {entryCalories(e)} kcal · P:{e.protein}g · C:{e.carbs}g · Fat:{e.fat}g · Fiber:{e.fiber}g
                     </div>
                   </div>
-                  <button
-                    onClick={() => onDelete(e.id)}
-                    className="text-slate-600 hover:text-red-400 ml-2 text-lg leading-none"
-                  >×</button>
+                  <div className="flex items-center gap-1 ml-2 shrink-0">
+                    <select
+                      defaultValue=""
+                      onChange={ev => {
+                        const target = parseInt(ev.target.value);
+                        if (target) { onMove(e.id, target); ev.target.value = ''; }
+                      }}
+                      className="text-xs bg-slate-600 text-slate-400 rounded px-1 py-0.5 outline-none cursor-pointer"
+                    >
+                      <option value="" disabled>Move →</option>
+                      {MEAL_NAMES.map((mName, i) => i + 1 !== number ? (
+                        <option key={i + 1} value={i + 1}>{mName}</option>
+                      ) : null)}
+                    </select>
+                    <button
+                      onClick={() => onDelete(e.id)}
+                      className="text-slate-600 hover:text-red-400 text-lg leading-none px-1"
+                    >×</button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -190,12 +213,12 @@ function MealSlot({ number, entries, foods, onAdd, onDelete, isExpanded, onToggl
   );
 }
 
-export default function MealLogger({ meals, foods, date, dayType, onAdd, onDelete }) {
+export default function MealLogger({ meals, foods, date, dayType, onAdd, onDelete, onMove }) {
   const [expandedMeal, setExpandedMeal] = useState(1);
 
   return (
     <div className="bg-slate-800/50 rounded-2xl p-6">
-      <h2 className="text-white font-bold text-lg mb-4">Today's Meals</h2>
+      <h2 className="text-white font-bold text-lg mb-4">Meals</h2>
       {[1, 2, 3, 4, 5, 6].map(n => (
         <MealSlot
           key={n}
@@ -204,6 +227,7 @@ export default function MealLogger({ meals, foods, date, dayType, onAdd, onDelet
           foods={foods}
           onAdd={entry => onAdd({ ...entry, date, day_type: dayType })}
           onDelete={onDelete}
+          onMove={onMove}
           isExpanded={expandedMeal === n}
           onToggle={() => setExpandedMeal(expandedMeal === n ? null : n)}
         />

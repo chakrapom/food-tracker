@@ -14,7 +14,9 @@ router.get('/week', (req, res) => {
       COALESCE(SUM(m.protein), 0) as protein,
       COALESCE(SUM(m.carbs),   0) as carbs,
       COALESCE(SUM(m.fat),     0) as fat,
-      COALESCE(SUM(m.fiber),   0) as fiber
+      COALESCE(SUM(m.fiber),   0) as fiber,
+      (SELECT COALESCE(SUM(e.duration_minutes), 0) FROM exercise e WHERE e.day_id = d.id) as exercise_minutes,
+      (SELECT COALESCE(SUM(e.calories_burned),  0) FROM exercise e WHERE e.day_id = d.id) as exercise_calories
     FROM days d
     LEFT JOIN meals m ON m.day_id = d.id
     WHERE d.date >= date('now', '-6 days')
@@ -33,6 +35,8 @@ router.get('/week', (req, res) => {
       carbs:   r.carbs,
       fat:     r.fat,
       fiber:   r.fiber,
+      exercise_minutes:  r.exercise_minutes,
+      exercise_calories: r.exercise_calories,
       targets: t,
       hit: {
         protein: r.protein >= t.protein,

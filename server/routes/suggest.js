@@ -10,9 +10,24 @@ const TARGETS = {
   rest:     { protein: 150, carbs: 20, fat: 30, fiber: 30 },
 };
 
+const MEAL_NAMES = ['Pre Workout', 'Breakfast', 'Lunch', 'Snack', 'Dinner', 'Supper'];
+
+function formatMealsEaten(meals) {
+  if (!meals || meals.length === 0) return 'Nothing logged yet.';
+  const grouped = {};
+  for (const m of meals) {
+    if (!grouped[m.meal_number]) grouped[m.meal_number] = [];
+    grouped[m.meal_number].push(m.food_name);
+  }
+  return Object.entries(grouped)
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .map(([num, foods]) => `  ${MEAL_NAMES[num - 1] || `Meal ${num}`}: ${foods.join(', ')}`)
+    .join('\n');
+}
+
 // POST /api/suggest
 router.post('/', async (req, res) => {
-  const { date, day_type, totals, meals_logged } = req.body;
+  const { date, day_type, totals, meals_logged, meals = [], exercise_burn = 0, calorie_target } = req.body;
 
   const targets = TARGETS[day_type] || TARGETS.training;
   const remaining = {
@@ -22,6 +37,11 @@ router.post('/', async (req, res) => {
     fiber:   Math.max(0, targets.fiber   - (totals.fiber   || 0)),
   };
 
+  const foodCal = (totals.protein || 0) * 4 + (totals.carbs || 0) * 4 + (totals.fat || 0) * 9;
+  const netCal  = Math.round(foodCal - exercise_burn);
+  const calTarget = calorie_target || 1800;
+  const remainingCal = Math.max(0, calTarget - netCal);
+
   const foods = db.prepare('SELECT name, serving_label, protein, carbs, fat, fiber FROM foods ORDER BY name').all();
   const foodList = foods.map(f =>
     `- ${f.name} (${f.serving_label}): ${f.protein}g protein, ${f.carbs}g carbs, ${f.fat}g fat, ${f.fiber}g fiber`
@@ -29,21 +49,26 @@ router.post('/', async (req, res) => {
 
   const mealsLogged = meals_logged || 0;
   const remainingMeals = Math.max(0, 6 - mealsLogged);
+  const remainingMealNames = MEAL_NAMES.slice(mealsLogged).join(', ');
 
-  const systemPrompt = `You are a PT nutrition coach for a Vietnamese guy tracking his macros carefully.
+  const systemPrompt = `You are a PT nutrition coach for a Vietnamese guy tracking his macros carefully for a calorie-deficit cut.
 
-Daily targets (${day_type} day): protein ${targets.protein}g, carbs ${targets.carbs}g, fat ${targets.fat}g, fiber ${targets.fiber}g (max 45g).
+Daily targets (${day_type} day): protein ${targets.protein}g, carbs ${targets.carbs}g, fat ${targets.fat}g, fiber ${targets.fiber}g (max 45g), calories ${calTarget} kcal net.
 
-So far today consumed: protein ${totals.protein?.toFixed(1) || 0}g, carbs ${totals.carbs?.toFixed(1) || 0}g, fat ${totals.fat?.toFixed(1) || 0}g, fiber ${totals.fiber?.toFixed(1) || 0}g.
+So far today — food: ${Math.round(foodCal)} kcal | active burn: ${Math.round(exercise_burn)} kcal | net: ${netCal} kcal (target ${calTarget} kcal).
+Macros consumed: protein ${totals.protein?.toFixed(1) || 0}g, carbs ${totals.carbs?.toFixed(1) || 0}g, fat ${totals.fat?.toFixed(1) || 0}g, fiber ${totals.fiber?.toFixed(1) || 0}g.
 
-Still needs: protein ${remaining.protein.toFixed(1)}g, carbs ${remaining.carbs.toFixed(1)}g, fat ${remaining.fat.toFixed(1)}g, fiber ${remaining.fiber.toFixed(1)}g.
+Still needs: protein ${remaining.protein.toFixed(1)}g, carbs ${remaining.carbs.toFixed(1)}g, fat ${remaining.fat.toFixed(1)}g, fiber ${remaining.fiber.toFixed(1)}g, ~${remainingCal} kcal of food.
 
-Remaining meal slots: ${remainingMeals} (Meal ${mealsLogged + 1} to Meal 6).
+What has been eaten today:
+${formatMealsEaten(meals)}
+
+Remaining meal slots: ${remainingMeals} (${remainingMealNames || 'none left'}).
 
 Available foods:
 ${foodList}
 
-Be direct, practical, Vietnamese food-aware. 2-3 sentences max. Suggest specific foods from the list above that would close the gap across the remaining meals. If everything is on track, say so briefly. Use plain text only — no markdown, no asterisks, no bold, no bullet points.`;
+Be direct, practical, Vietnamese food-aware. 2-3 sentences max. Suggest specific foods from the list above that would close the macro and calorie gap across the remaining meals. If everything is on track, say so briefly. Use plain text only — no markdown, no asterisks, no bold, no bullet points.`;
 
   try {
     const message = await client.messages.create({

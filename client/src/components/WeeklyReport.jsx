@@ -2,11 +2,25 @@ import { useState, useEffect, useRef } from 'react';
 import { toPng } from 'html-to-image';
 
 const MACRO_META = [
-  { key: 'protein', label: 'Protein', color: 'bg-blue-500',    text: 'text-blue-400'    },
-  { key: 'carbs',   label: 'Carbs',   color: 'bg-yellow-400',  text: 'text-yellow-400'  },
-  { key: 'fat',     label: 'Fat',     color: 'bg-purple-500',  text: 'text-purple-400'  },
-  { key: 'fiber',   label: 'Fiber',   color: 'bg-emerald-500', text: 'text-emerald-400' },
+  { key: 'protein', label: 'Protein', text: 'text-blue-400',    belowThreshold: false },
+  { key: 'carbs',   label: 'Carbs',   text: 'text-yellow-400',  belowThreshold: true  },
+  { key: 'fat',     label: 'Fat',     text: 'text-purple-400',  belowThreshold: false },
+  { key: 'fiber',   label: 'Fiber',   text: 'text-emerald-400', belowThreshold: false },
 ];
+
+const CAL_PRESETS = {
+  moderate:   { training: 1800, rest: 1600 },
+  light:      { training: 2000, rest: 1800 },
+  aggressive: { training: 1600, rest: 1400 },
+};
+
+function dayCalories(d) {
+  return Math.round(d.protein * 4 + d.carbs * 4 + d.fat * 9);
+}
+
+function calTarget(d, preset) {
+  return (CAL_PRESETS[preset] || CAL_PRESETS.moderate)[d.day_type] || 1800;
+}
 
 function trendArrow(val) {
   if (val === null || val === undefined) return null;
@@ -25,38 +39,39 @@ function dateShort(dateStr) {
 
 function weekRange(days) {
   if (!days || days.length === 0) return '';
-  const first = dateShort(days[0].date);
-  const last  = dateShort(days[days.length - 1].date);
-  return `${first} – ${last}`;
+  return `${dateShort(days[0].date)} – ${dateShort(days[days.length - 1].date)}`;
 }
 
 function HitDot({ hit }) {
   return <div className={`w-2.5 h-2.5 rounded-full ${hit ? 'bg-emerald-500' : 'bg-slate-600'}`} />;
 }
 
-function StatCard({ label, avg, target, hitRate, trend, textColor }) {
+// n = days with data, denom = always 7
+function StatCard({ label, avg, target, hitCount, denom = 7, trend, textColor, unit = 'g', belowThreshold = false }) {
   const arrow = trendArrow(trend);
-  const hitPct = Math.round(hitRate * 100);
+  const hitPct = Math.min(100, Math.max(0, (hitCount / denom) * 100));
   return (
     <div className="bg-slate-700/60 rounded-xl p-3">
       <div className="flex items-center justify-between mb-1">
         <span className="text-slate-400 text-xs font-medium">{label}</span>
         {arrow && <span className={`text-xs font-bold ${arrow.color}`}>{arrow.icon}</span>}
       </div>
-      <div className={`text-xl font-bold ${textColor}`}>{avg.toFixed(0)}g</div>
-      <div className="text-slate-500 text-xs">avg · target {target}g</div>
+      <div className={`text-xl font-bold ${textColor}`}>{avg.toFixed(0)}{unit}</div>
+      <div className="text-slate-500 text-xs">avg · {belowThreshold ? 'below' : 'target'} {target}{unit}</div>
       <div className="mt-2 h-1.5 bg-slate-600 rounded-full overflow-hidden">
         <div
           className={`h-full rounded-full ${hitPct >= 70 ? 'bg-emerald-500' : hitPct >= 40 ? 'bg-orange-400' : 'bg-red-500'}`}
           style={{ width: `${hitPct}%` }}
         />
       </div>
-      <div className="text-slate-500 text-xs mt-1">hit {hitPct}% of days</div>
+      <div className="text-slate-500 text-xs mt-1">
+        {belowThreshold ? 'below threshold ' : ''}{hitCount}/{denom} days
+      </div>
     </div>
   );
 }
 
-export default function WeeklyReport({ onSelectDate }) {
+export default function WeeklyReport({ onSelectDate, caloriePreset }) {
   const [data, setData] = useState(null);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -76,26 +91,48 @@ export default function WeeklyReport({ onSelectDate }) {
     if (!reportRef.current) return;
     setExporting(true);
     try {
-      const dataUrl = await toPng(reportRef.current, {
-        backgroundColor: '#1e293b',
-        pixelRatio: 2,
-      });
-      const res  = await fetch(dataUrl);
-      const blob = await res.blob();
-      try {
+      const dataUrl = await toPng(reportRef.current, { backgroundColor: '#1e293b', pixelRatio: 2 });
+      const blob = await (await fetch(dataUrl)).blob();
+
+      if (navigator.clipboard && navigator.clipboard.write) {
         await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
         alert('Copied! Paste it anywhere — WhatsApp, iMessage, email.');
-      } catch (e) {
-        alert('Copy failed: ' + e.message);
+      } else {
+        // Fallback: download as file
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'jimmy-eats-weekly.png';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        alert('Saved as jimmy-eats-weekly.png (clipboard not available in this browser).');
       }
-      setExporting(false);
     } catch (e) {
       alert('Export failed: ' + e.message);
-      setExporting(false);
     }
+    setExporting(false);
   }
 
   const isEmpty = data && data.days.length === 0;
+  const n = data?.days.length || 1;
+
+  // Calorie stats derived client-side
+  const calDays = data?.days.map(d => ({
+    ...d,
+    cal:    dayCalories(d),
+    calTgt: calTarget(d, caloriePreset),
+    calHit: dayCalories(d) <= calTarget(d, caloriePreset),
+  }));
+
+  const avgCal     = calDays ? calDays.reduce((s, d) => s + d.cal, 0) / n : 0;
+  const calHitCount = calDays ? calDays.filter(d => d.calHit).length : 0;
+  const avgCalTgt   = calDays ? Math.round(calDays.reduce((s, d) => s + d.calTgt, 0) / n) : 0;
+
+  // Exercise stats
+  const avgExercise = data ? data.days.reduce((s, d) => s + (d.exercise_minutes || 0), 0) / n : 0;
+  const exerciseHitCount = data ? data.days.filter(d => (d.exercise_minutes || 0) >= 30).length : 0;
 
   return (
     <div className="bg-slate-800 rounded-2xl overflow-hidden">
@@ -114,7 +151,6 @@ export default function WeeklyReport({ onSelectDate }) {
 
           {data && data.days.length > 0 && (
             <>
-              {/* Exportable region */}
               <div ref={reportRef} className="bg-slate-800 rounded-xl pt-4 pb-2">
 
                 {/* Report header */}
@@ -123,9 +159,7 @@ export default function WeeklyReport({ onSelectDate }) {
                     <div className="text-white font-bold">Jimmy Eats</div>
                     <div className="text-slate-500 text-xs">{weekRange(data.days)}</div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-slate-400 text-xs">Weekly Summary</div>
-                  </div>
+                  <div className="text-slate-400 text-xs">Weekly Summary</div>
                 </div>
 
                 {/* 7-day grid */}
@@ -133,7 +167,7 @@ export default function WeeklyReport({ onSelectDate }) {
                   <table className="w-full text-xs">
                     <thead>
                       <tr>
-                        <td className="text-slate-500 pb-2 pr-2 w-12"></td>
+                        <td className="text-slate-500 pb-2 pr-2 w-14"></td>
                         {data.days.map(d => (
                           <td key={d.date} className="text-center pb-2 px-1">
                             <div className="flex flex-col items-center gap-0.5">
@@ -145,6 +179,19 @@ export default function WeeklyReport({ onSelectDate }) {
                       </tr>
                     </thead>
                     <tbody>
+                      {/* Calories row */}
+                      <tr>
+                        <td className="text-rose-400 font-medium pr-2 py-1">Cal</td>
+                        {calDays.map(d => (
+                          <td key={d.date} className="text-center py-1 px-1">
+                            <div className="flex flex-col items-center gap-0.5">
+                              <HitDot hit={d.calHit} />
+                              <span className="text-slate-500">{d.cal}</span>
+                            </div>
+                          </td>
+                        ))}
+                      </tr>
+                      {/* Macro rows */}
                       {MACRO_META.map(m => (
                         <tr key={m.key}>
                           <td className={`${m.text} font-medium pr-2 py-1`}>{m.label}</td>
@@ -158,6 +205,19 @@ export default function WeeklyReport({ onSelectDate }) {
                           ))}
                         </tr>
                       ))}
+                      {/* Exercise row */}
+                      <tr>
+                        <td className="text-orange-400 font-medium pr-2 py-1">Exer</td>
+                        {data.days.map(d => (
+                          <td key={d.date} className="text-center py-1 px-1">
+                            <div className="flex flex-col items-center gap-0.5">
+                              <HitDot hit={(d.exercise_minutes || 0) >= 30} />
+                              <span className="text-slate-500">{d.exercise_minutes || 0}m</span>
+                            </div>
+                          </td>
+                        ))}
+                      </tr>
+                      {/* Day type row */}
                       <tr>
                         <td className="text-slate-500 pr-2 py-1">Type</td>
                         {data.days.map(d => (
@@ -170,24 +230,46 @@ export default function WeeklyReport({ onSelectDate }) {
                   </table>
                 </div>
 
-                {/* Averages */}
-                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {/* Stat cards */}
+                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {/* Calories */}
+                  <StatCard
+                    label="Calories"
+                    avg={avgCal}
+                    target={avgCalTgt}
+                    hitCount={calHitCount}
+                    textColor="text-rose-400"
+                    unit=" kcal"
+                    belowThreshold
+                  />
+                  {/* Macros */}
                   {MACRO_META.map(m => {
                     const avgTarget = m.key === 'carbs'
-                      ? Math.round(data.days.reduce((s, d) => s + d.targets[m.key], 0) / data.days.length)
+                      ? Math.round(data.days.reduce((s, d) => s + d.targets[m.key], 0) / n)
                       : data.days[0].targets[m.key];
+                    const hitCount = Math.round(data.hitRates[m.key] * n);
                     return (
                       <StatCard
                         key={m.key}
                         label={m.label}
                         avg={data.averages[m.key]}
                         target={avgTarget}
-                        hitRate={data.hitRates[m.key]}
+                        hitCount={hitCount}
                         trend={data.trends?.[m.key]}
                         textColor={m.text}
+                        belowThreshold={m.belowThreshold}
                       />
                     );
                   })}
+                  {/* Exercise */}
+                  <StatCard
+                    label="Exercise"
+                    avg={avgExercise}
+                    target={30}
+                    hitCount={exerciseHitCount}
+                    textColor="text-orange-400"
+                    unit=" min"
+                  />
                 </div>
 
                 {/* Best / Worst */}
@@ -207,30 +289,28 @@ export default function WeeklyReport({ onSelectDate }) {
                 )}
               </div>
 
-              {/* Action buttons — outside the export region */}
+              {/* Action buttons */}
               <div className="flex gap-2 mt-4">
                 <button
                   onClick={handleCopy}
                   disabled={exporting}
                   className="flex-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 text-white text-sm py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"
                 >
-                  {exporting ? '⏳ Copying...' : '📋 Copy image to clipboard'}
+                  {exporting ? '⏳ Exporting...' : '📋 Copy image to clipboard'}
                 </button>
-                {data.days.map && (
-                  <div className="flex gap-1">
-                    {data.days.map(d => (
-                      <button
-                        key={d.date}
-                        onClick={() => onSelectDate(d.date)}
-                        title={d.date}
-                        className="w-7 h-9 flex flex-col items-center justify-center gap-0.5 rounded-lg bg-slate-700/50 hover:bg-slate-600 transition-colors"
-                      >
-                        <span className="text-slate-400 text-xs leading-none">{dayShort(d.date).slice(0,1)}</span>
-                        <div className={`w-1.5 h-1.5 rounded-full ${d.hit.protein ? 'bg-emerald-500' : 'bg-slate-600'}`} />
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <div className="flex gap-1">
+                  {data.days.map(d => (
+                    <button
+                      key={d.date}
+                      onClick={() => onSelectDate(d.date)}
+                      title={d.date}
+                      className="w-7 h-9 flex flex-col items-center justify-center gap-0.5 rounded-lg bg-slate-700/50 hover:bg-slate-600 transition-colors"
+                    >
+                      <span className="text-slate-400 text-xs leading-none">{dayShort(d.date).slice(0, 1)}</span>
+                      <div className={`w-1.5 h-1.5 rounded-full ${d.hit.protein ? 'bg-emerald-500' : 'bg-slate-600'}`} />
+                    </button>
+                  ))}
+                </div>
               </div>
             </>
           )}
