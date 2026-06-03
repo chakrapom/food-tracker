@@ -8,6 +8,50 @@ import WeeklyReport from './components/WeeklyReport';
 import CustomFoodForm from './components/CustomFoodForm';
 import ExerciseLogger from './components/ExerciseLogger';
 
+const MOTIVATIONS = [
+  // — Looking good, owning it —
+  "You want to look good. That's not shallow — that's self-respect. Own it.",
+  "The body you want isn't a fantasy. It's just the result of doing this, consistently.",
+  "You're not chasing a number. You're chasing how it feels to walk into a room confident.",
+  "Future you looks in the mirror and smiles. He started exactly where you are now.",
+
+  // — Self-worth, self-investment —
+  "Your body is the only one you'll ever have. Treat it accordingly.",
+  "Every meal you log is a vote for the person you're becoming.",
+  "This isn't a diet. It's an investment — and the returns are compound.",
+  "You are worth the effort. Full stop.",
+  "Most people wait until something breaks to start caring. You're not most people.",
+  "Self-discipline is self-love with delayed gratification.",
+
+  // — Health as foundation —
+  "Health isn't everything — but without it, everything else gets harder.",
+  "Strong body, clear mind. That's the whole plan.",
+  "You can't build a great life on a broken foundation. Your body is the foundation.",
+  "The goal isn't to be perfect. It's to feel well every single day.",
+  "When you're healthy, every other problem feels smaller. Remember that.",
+
+  // — Being there for others —
+  "You can't pour from an empty cup. Fill yours first.",
+  "The people who love you need you well. Show up for them by showing up for yourself.",
+  "Carry your own weight today so you can carry others when they need you.",
+  "Being well is an act of love — for yourself and everyone around you.",
+  "The strongest thing you can do for the people you care about is not fall apart.",
+  "You want to be present, fully — for your family, your people. That starts here.",
+
+  // — Discipline, the quiet kind —
+  "Discipline isn't punishment. It's the highest form of care you can give yourself.",
+  "Nobody regrets eating well. They only regret stopping.",
+  "The days you don't feel like it are the days that matter most.",
+  "Small choices, made consistently, become who you are.",
+  "You've already logged today. That's more than most people did.",
+
+  // — Joy, lightness —
+  "Health is not a finish line. It's how you feel every morning you wake up.",
+  "You're not sacrificing joy — you're building a life where joy is sustainable.",
+  "This is what caring about yourself actually looks like. Keep going.",
+  "Good food. Strong body. Good life. It really is that simple.",
+];
+
 function localToday() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -47,6 +91,12 @@ export default function App() {
   const [showAI, setShowAI] = useState(false);
   const [caloriePreset, setCaloriePreset] = useState(loadPreset);
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [motivation, setMotivation] = useState(null);
+
+  function showMotivation() {
+    const quote = MOTIVATIONS[Math.floor(Math.random() * MOTIVATIONS.length)];
+    setMotivation(quote);
+  }
 
   const exerciseBurn = exercises.reduce((s, e) => s + (e.calories_burned || 0), 0);
 
@@ -190,8 +240,25 @@ export default function App() {
 
         {/* App name */}
         <div className="text-center pt-2 pb-1">
-          <span className="text-2xl font-bold text-white tracking-tight">Jimmy Eats 🍖</span>
+          <button
+            onClick={showMotivation}
+            className="text-2xl font-bold text-white tracking-tight hover:opacity-80 transition-opacity active:scale-95"
+          >Jimmy Eats 🍲</button>
         </div>
+
+        {/* Motivation modal */}
+        {motivation && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-6"
+            onClick={() => setMotivation(null)}
+          >
+            <div className="bg-slate-800 rounded-2xl p-8 max-w-sm w-full shadow-2xl border border-slate-700 text-center">
+              <div className="text-3xl mb-4">🍲</div>
+              <p className="text-white text-lg font-medium leading-relaxed">{motivation}</p>
+              <p className="text-slate-500 text-xs mt-6">tap anywhere to close</p>
+            </div>
+          </div>
+        )}
 
         {/* Header: date nav row, then streak right-justified below */}
         <div className="space-y-1.5">

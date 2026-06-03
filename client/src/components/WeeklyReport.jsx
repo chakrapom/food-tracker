@@ -156,7 +156,7 @@ export default function WeeklyReport({ onSelectDate, caloriePreset }) {
                 {/* Report header */}
                 <div className="flex items-center justify-between mb-4 px-1">
                   <div>
-                    <div className="text-white font-bold">Jimmy Eats</div>
+                    <div className="text-white font-bold">Jimmy Eats 🍲</div>
                     <div className="text-slate-500 text-xs">{weekRange(data.days)}</div>
                   </div>
                   <div className="text-slate-400 text-xs">Weekly Summary</div>

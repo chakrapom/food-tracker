@@ -68,12 +68,20 @@ Remaining meal slots: ${remainingMeals} (${remainingMealNames || 'none left'}).
 Available foods:
 ${foodList}
 
-Be direct, practical, Vietnamese food-aware. 2-3 sentences max. Suggest specific foods from the list above that would close the macro and calorie gap across the remaining meals. If everything is on track, say so briefly. Use plain text only — no markdown, no asterisks, no bold, no bullet points.`;
+Reply in exactly this format — no deviation:
+
+[1-2 sentences: overall status and what matters most right now]
+
+Next 2 meals:
+• [meal name]: [specific food] + [specific food] — [one-line reason tied to the macro gap]
+• [meal name]: [specific food] + [specific food] — [one-line reason tied to the macro gap]
+
+Rules: only suggest foods from the available list above. Be concrete — name the food, not the nutrient. No waffle, no encouragement filler. If macros are already on track, say so in one line and skip the meal bullets.`;
 
   try {
     const message = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 300,
+      max_tokens: 400,
       system: systemPrompt,
       messages: [{ role: 'user', content: 'What should I eat for my remaining meals?' }],
     });
@@ -94,13 +102,25 @@ router.post('/parse', async (req, res) => {
   const { text } = req.body;
   if (!text) return res.status(400).json({ error: 'text required' });
 
+  const foods = db.prepare('SELECT name, serving_label, protein, carbs, fat, fiber FROM foods ORDER BY name').all();
+  const foodList = foods.map(f =>
+    `- ${f.name} (${f.serving_label}): protein ${f.protein}g, carbs ${f.carbs}g, fat ${f.fat}g, fiber ${f.fiber}g`
+  ).join('\n');
+
   try {
     const message = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 300,
-      system: `You are a nutrition parser. Given a food description, return a JSON array of food items found. Each item:
-{ "food_name": string, "protein": number, "carbs": number, "fat": number, "fiber": number, "serving_note": string }
-Use standard nutritional values. Return ONLY valid JSON array, no explanation, no markdown.`,
+      max_tokens: 400,
+      system: `You are a nutrition parser. Given a food description, return a JSON array of food items.
+
+Food database — when the food matches an entry below, use those exact macro values scaled by the quantity:
+${foodList}
+
+Scaling rule: determine the quantity ratio (e.g. "1/3 cup" vs "1 cup cooked" → ratio 0.333), then multiply all macros by that ratio.
+If no database match, use standard nutritional values.
+
+Each item: { "food_name": string, "protein": number, "carbs": number, "fat": number, "fiber": number, "serving_note": string }
+Return ONLY valid JSON array, no explanation, no markdown.`,
       messages: [{ role: 'user', content: text }],
     });
 

@@ -6,10 +6,21 @@ function entryCalories(e) {
   return Math.round((e.protein || 0) * 4 + (e.carbs || 0) * 4 + (e.fat || 0) * 9);
 }
 
+function parseServings(val) {
+  const s = String(val).trim();
+  const fraction = s.match(/^(\d+)\/(\d+)$/);
+  if (fraction) {
+    const n = parseFloat(fraction[1]) / parseFloat(fraction[2]);
+    return n > 0 ? n : 1;
+  }
+  const n = parseFloat(s);
+  return n > 0 ? n : 1;
+}
+
 function MealSlot({ number, entries, foods, onAdd, onDelete, onMove, isExpanded, onToggle }) {
   const [text, setText] = useState('');
   const [selectedFood, setSelectedFood] = useState(null);
-  const [servings, setServings] = useState(1);
+  const [servings, setServings] = useState('1');
   const [adding, setAdding] = useState(false);
   const [parsing, setParsing] = useState(false);
   const dropdownRef = useRef(null);
@@ -40,20 +51,21 @@ function MealSlot({ number, entries, foods, onAdd, onDelete, onMove, isExpanded,
   function handleClear() {
     setSelectedFood(null);
     setText('');
-    setServings(1);
+    setServings('1');
     inputRef.current?.focus();
   }
 
   async function handleAddPreset() {
     if (!selectedFood) return;
+    const qty = parseServings(servings);
     setAdding(true);
     await onAdd({
       meal_number: number,
-      food_name: servings === 1 ? selectedFood.name : `${selectedFood.name} × ${servings}`,
-      protein: selectedFood.protein * servings,
-      carbs:   selectedFood.carbs   * servings,
-      fat:     selectedFood.fat     * servings,
-      fiber:   selectedFood.fiber   * servings,
+      food_name: qty === 1 ? selectedFood.name : `${selectedFood.name} × ${servings}`,
+      protein: selectedFood.protein * qty,
+      carbs:   selectedFood.carbs   * qty,
+      fat:     selectedFood.fat     * qty,
+      fiber:   selectedFood.fiber   * qty,
       serving_note: `${servings} × ${selectedFood.serving_label}`,
     });
     handleClear();
@@ -126,7 +138,7 @@ function MealSlot({ number, entries, foods, onAdd, onDelete, onMove, isExpanded,
                     <span className="text-slate-200">{e.food_name}</span>
                     {e.serving_note && <span className="text-slate-500 ml-2 text-xs">({e.serving_note})</span>}
                     <div className="text-slate-500 text-xs mt-0.5">
-                      {entryCalories(e)} kcal · P:{e.protein}g · C:{e.carbs}g · Fat:{e.fat}g · Fiber:{e.fiber}g
+                      {entryCalories(e)} kcal · P:{Math.round(e.protein)}g · C:{Math.round(e.carbs)}g · Fat:{Math.round(e.fat)}g · Fiber:{Math.round(e.fiber)}g
                     </div>
                   </div>
                   <div className="flex items-center gap-1 ml-2 shrink-0">
@@ -172,13 +184,12 @@ function MealSlot({ number, entries, foods, onAdd, onDelete, onMove, isExpanded,
               {selectedFood ? (
                 <>
                   <input
-                    type="number"
-                    min="0.5"
-                    step="0.5"
+                    type="text"
                     value={servings}
-                    onChange={e => setServings(parseFloat(e.target.value) || 1)}
-                    className="w-14 bg-slate-700 text-slate-200 text-sm rounded-lg px-2 py-2 text-center outline-none focus:ring-1 focus:ring-blue-500"
-                    title="Servings"
+                    onChange={e => setServings(e.target.value)}
+                    className="w-16 bg-slate-700 text-slate-200 text-sm rounded-lg px-2 py-2 text-center outline-none focus:ring-1 focus:ring-blue-500"
+                    title="Servings (e.g. 1, 0.5, 1/3)"
+                    placeholder="1"
                   />
                   <button
                     onClick={handleAddPreset}
