@@ -7,6 +7,7 @@ export default defineConfig({
   server: {
     port: 3000,
     host: true,
+    allowedHosts: ['trinhs-macbook-pro.local'],
     proxy: {
       '/api': 'http://localhost:3001',
     },
