@@ -77,7 +77,7 @@ export default function MacroDashboard({ totals, dayType, onChangeDayType, exerc
   return (
     <div className="bg-slate-800 rounded-2xl p-6">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-white font-bold text-lg">Today's Macros</h2>
+        <h2 className="text-white font-bold text-lg">Daily Macros</h2>
         <div className="flex items-center gap-2">
           <button
             onClick={() => onChangeCaloriePreset(nextPreset)}
