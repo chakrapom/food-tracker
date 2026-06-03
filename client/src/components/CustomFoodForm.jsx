@@ -6,9 +6,40 @@ export default function CustomFoodForm({ onAdd, onClose }) {
     protein: '', carbs: '', fat: '', fiber: '',
   });
   const [saving, setSaving] = useState(false);
+  const [filling, setFilling] = useState(false);
 
   function set(field, val) {
     setForm(f => ({ ...f, [field]: val }));
+  }
+
+  async function handleAIFill() {
+    if (!form.name.trim()) return;
+    setFilling(true);
+    try {
+      const query = form.serving_label
+        ? `${form.name} (${form.serving_label})`
+        : form.name;
+      const res = await fetch('/api/suggest/parse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: query, lookup: true }),
+      });
+      const items = await res.json();
+      if (items[0]) {
+        const r = v => v == null ? '' : Math.round(v * 10) / 10;
+        const { protein, carbs, fat, fiber } = items[0];
+        setForm(f => ({
+          ...f,
+          protein: r(protein),
+          carbs:   r(carbs),
+          fat:     r(fat),
+          fiber:   r(fiber),
+        }));
+      }
+    } catch {
+      alert('Could not fetch macros. Try again.');
+    }
+    setFilling(false);
   }
 
   async function handleSubmit(e) {
@@ -58,6 +89,14 @@ export default function CustomFoodForm({ onAdd, onClose }) {
             onChange={e => set('serving_label', e.target.value)}
             className="w-full bg-slate-700 text-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500 placeholder-slate-500"
           />
+          <button
+            type="button"
+            onClick={handleAIFill}
+            disabled={!form.name.trim() || filling}
+            className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white text-sm py-2 rounded-lg transition-colors"
+          >
+            {filling ? '⏳ Looking up…' : '✨ Fill macros'}
+          </button>
           <div className="grid grid-cols-2 gap-2">
             {[
               ['protein', 'Protein (g)'],

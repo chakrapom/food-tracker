@@ -6,6 +6,7 @@ import AISuggestion from './components/AISuggestion';
 import StreakSummary from './components/StreakSummary';
 import WeeklyReport from './components/WeeklyReport';
 import CustomFoodForm from './components/CustomFoodForm';
+import FoodListModal from './components/FoodListModal';
 import ExerciseLogger from './components/ExerciseLogger';
 
 const MOTIVATIONS = [
@@ -88,6 +89,7 @@ export default function App() {
   const [exercises, setExercises] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCustomForm, setShowCustomForm] = useState(false);
+  const [showFoodList, setShowFoodList] = useState(false);
   const [showAI, setShowAI] = useState(false);
   const [caloriePreset, setCaloriePreset] = useState(loadPreset);
   const [pendingDelete, setPendingDelete] = useState(null);
@@ -289,10 +291,10 @@ export default function App() {
               )}
             </div>
             <button
-              onClick={() => setShowCustomForm(true)}
+              onClick={() => setShowFoodList(true)}
               className="text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
             >
-              + Add food
+              My Foods
             </button>
           </div>
 
@@ -380,10 +382,12 @@ export default function App() {
         </div>
       )}
 
-      {showCustomForm && (
-        <CustomFoodForm
+      {showFoodList && (
+        <FoodListModal
+          foods={foods}
           onAdd={food => setFoods(prev => [...prev, food])}
-          onClose={() => setShowCustomForm(false)}
+          onDelete={id => setFoods(prev => prev.filter(f => f.id !== id))}
+          onClose={() => setShowFoodList(false)}
         />
       )}
 

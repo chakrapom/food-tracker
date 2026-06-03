@@ -99,19 +99,27 @@ Rules: only suggest foods from the available list above. Be concrete — name th
 
 // POST /api/suggest/parse — free-text food parsing
 router.post('/parse', async (req, res) => {
-  const { text } = req.body;
+  const { text, lookup } = req.body;
   if (!text) return res.status(400).json({ error: 'text required' });
 
-  const foods = db.prepare('SELECT name, serving_label, protein, carbs, fat, fiber FROM foods ORDER BY name').all();
-  const foodList = foods.map(f =>
-    `- ${f.name} (${f.serving_label}): protein ${f.protein}g, carbs ${f.carbs}g, fat ${f.fat}g, fiber ${f.fiber}g`
-  ).join('\n');
+  let systemPrompt;
 
-  try {
-    const message = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 400,
-      system: `You are a nutrition parser. Given a food description, return a JSON array of food items.
+  if (lookup) {
+    // Simple nutritional lookup — no database context, used for adding new foods
+    systemPrompt = `You are a nutrition database for a Vietnamese user. Given a food name and serving size, return accurate macro values.
+Portion sizing rules:
+- For items measured in cups (rice, vegetables, soups): apply a 0.8 multiplier to USDA values — Vietnamese portions are smaller than US standard cups
+- For items measured in grams or ml: use exact USDA values — weight is universal
+- For complete Vietnamese dishes (phở, bún, cơm): use Vietnamese restaurant serving sizes, not Western estimates
+Each item: { "food_name": string, "protein": number, "carbs": number, "fat": number, "fiber": number, "serving_note": string }
+Return ONLY valid JSON array, no explanation, no markdown.`;
+  } else {
+    const foods = db.prepare('SELECT name, serving_label, protein, carbs, fat, fiber FROM foods ORDER BY name').all();
+    const foodList = foods.map(f =>
+      `- ${f.name} (${f.serving_label}): protein ${f.protein}g, carbs ${f.carbs}g, fat ${f.fat}g, fiber ${f.fiber}g`
+    ).join('\n');
+
+    systemPrompt = `You are a nutrition parser. Given a food description, return a JSON array of food items.
 
 Food database — when the food matches an entry below, use those exact macro values scaled by the quantity:
 ${foodList}
@@ -120,7 +128,14 @@ Scaling rule: determine the quantity ratio (e.g. "1/3 cup" vs "1 cup cooked" →
 If no database match, use standard nutritional values.
 
 Each item: { "food_name": string, "protein": number, "carbs": number, "fat": number, "fiber": number, "serving_note": string }
-Return ONLY valid JSON array, no explanation, no markdown.`,
+Return ONLY valid JSON array, no explanation, no markdown.`;
+  }
+
+  try {
+    const message = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 400,
+      system: systemPrompt,
       messages: [{ role: 'user', content: text }],
     });
 
