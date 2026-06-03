@@ -91,7 +91,26 @@ export default function WeeklyReport({ onSelectDate, caloriePreset }) {
     if (!reportRef.current) return;
     setExporting(true);
     try {
-      const dataUrl = await toPng(reportRef.current, { backgroundColor: '#1e293b', pixelRatio: 2 });
+      const el = reportRef.current;
+
+      // Expand element for full-width capture
+      const prev = { width: el.style.width, maxWidth: el.style.maxWidth, padding: el.style.padding };
+      el.style.width = '600px';
+      el.style.maxWidth = 'none';
+      el.style.padding = '20px';
+
+      // Remove overflow clipping on inner table wrapper
+      const tableWrapper = el.querySelector('.overflow-x-auto');
+      const prevOverflow = tableWrapper?.style.overflowX ?? '';
+      if (tableWrapper) tableWrapper.style.overflowX = 'visible';
+
+      const dataUrl = await toPng(el, { backgroundColor: '#1e293b', pixelRatio: 2 });
+
+      // Restore
+      el.style.width = prev.width;
+      el.style.maxWidth = prev.maxWidth;
+      el.style.padding = prev.padding;
+      if (tableWrapper) tableWrapper.style.overflowX = prevOverflow;
       const blob = await (await fetch(dataUrl)).blob();
 
       if (navigator.clipboard && navigator.clipboard.write) {
@@ -207,7 +226,7 @@ export default function WeeklyReport({ onSelectDate, caloriePreset }) {
                       ))}
                       {/* Exercise row */}
                       <tr>
-                        <td className="text-orange-400 font-medium pr-2 py-1">Exer</td>
+                        <td className="text-orange-400 font-medium pr-2 py-1">Exercise</td>
                         {data.days.map(d => (
                           <td key={d.date} className="text-center py-1 px-1">
                             <div className="flex flex-col items-center gap-0.5">
