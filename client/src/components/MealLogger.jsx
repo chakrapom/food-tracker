@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 const MEAL_NAMES = ['Pre Workout', 'Breakfast', 'Lunch', 'Snack', 'Dinner', 'Supper'];
 
@@ -7,52 +7,67 @@ function entryCalories(e) {
 }
 
 function MealSlot({ number, entries, foods, onAdd, onDelete, onMove, isExpanded, onToggle }) {
-  const [mode, setMode] = useState('preset');
-  const [selectedFood, setSelectedFood] = useState('');
+  const [text, setText] = useState('');
+  const [selectedFood, setSelectedFood] = useState(null);
   const [servings, setServings] = useState(1);
-  const [freeText, setFreeText] = useState('');
-  const [search, setSearch] = useState('');
   const [adding, setAdding] = useState(false);
   const [parsing, setParsing] = useState(false);
+  const dropdownRef = useRef(null);
+  const inputRef = useRef(null);
 
-  const mealTotal = entries.reduce((acc, e) => ({
-    protein: acc.protein + (e.protein || 0),
-    carbs:   acc.carbs   + (e.carbs   || 0),
-    fat:     acc.fat     + (e.fat     || 0),
-    fiber:   acc.fiber   + (e.fiber   || 0),
-  }), { protein: 0, carbs: 0, fat: 0, fiber: 0 });
+  const filtered = text.length > 0 && !selectedFood
+    ? foods.filter(f => f.name.toLowerCase().includes(text.toLowerCase())).slice(0, 8)
+    : [];
 
-  const mealCal = Math.round(mealTotal.protein * 4 + mealTotal.carbs * 4 + mealTotal.fat * 9);
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function onClickOutside(e) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        // Only clear selectedFood state, not text
+        if (!selectedFood) setText('');
+      }
+    }
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, [selectedFood]);
 
-  const filtered = foods.filter(f => f.name.toLowerCase().includes(search.toLowerCase()));
+  function handleSelectFood(food) {
+    setSelectedFood(food);
+    setText(food.name);
+    setServings(1);
+  }
+
+  function handleClear() {
+    setSelectedFood(null);
+    setText('');
+    setServings(1);
+    inputRef.current?.focus();
+  }
 
   async function handleAddPreset() {
-    const food = foods.find(f => f.id === parseInt(selectedFood));
-    if (!food) return;
+    if (!selectedFood) return;
     setAdding(true);
     await onAdd({
       meal_number: number,
-      food_name: `${food.name} × ${servings}`,
-      protein: food.protein * servings,
-      carbs:   food.carbs   * servings,
-      fat:     food.fat     * servings,
-      fiber:   food.fiber   * servings,
-      serving_note: `${servings} × ${food.serving_label}`,
+      food_name: servings === 1 ? selectedFood.name : `${selectedFood.name} × ${servings}`,
+      protein: selectedFood.protein * servings,
+      carbs:   selectedFood.carbs   * servings,
+      fat:     selectedFood.fat     * servings,
+      fiber:   selectedFood.fiber   * servings,
+      serving_note: `${servings} × ${selectedFood.serving_label}`,
     });
-    setSelectedFood('');
-    setServings(1);
-    setSearch('');
+    handleClear();
     setAdding(false);
   }
 
-  async function handleParseFreeText() {
-    if (!freeText.trim()) return;
+  async function handleParseAI() {
+    if (!text.trim()) return;
     setParsing(true);
     try {
       const res = await fetch('/api/suggest/parse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: freeText }),
+        body: JSON.stringify({ text }),
       });
       const items = await res.json();
       for (const item of items) {
@@ -66,23 +81,29 @@ function MealSlot({ number, entries, foods, onAdd, onDelete, onMove, isExpanded,
           serving_note: item.serving_note || '',
         });
       }
-      setFreeText('');
+      handleClear();
     } catch {
       alert('Could not parse food text. Try again.');
     }
     setParsing(false);
   }
 
-  const name = MEAL_NAMES[number - 1];
+  const mealTotal = entries.reduce((acc, e) => ({
+    protein: acc.protein + (e.protein || 0),
+    carbs:   acc.carbs   + (e.carbs   || 0),
+    fat:     acc.fat     + (e.fat     || 0),
+    fiber:   acc.fiber   + (e.fiber   || 0),
+  }), { protein: 0, carbs: 0, fat: 0, fiber: 0 });
+  const mealCal = Math.round(mealTotal.protein * 4 + mealTotal.carbs * 4 + mealTotal.fat * 9);
 
   return (
-    <div className="bg-slate-800 rounded-xl overflow-hidden mb-3">
+    <div className={`bg-slate-800 rounded-xl mb-3 ${isExpanded ? 'relative z-10' : ''}`}>
       <button
         onClick={onToggle}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-750 transition-colors text-left"
+        className={`w-full flex items-center justify-between px-4 py-3 hover:bg-slate-700/50 transition-colors text-left ${isExpanded ? 'rounded-t-xl' : 'rounded-xl'}`}
       >
         <div className="flex items-center gap-3">
-          <span className="text-slate-300 font-medium text-sm w-28">{name}</span>
+          <span className="text-slate-300 font-medium text-sm w-28">{MEAL_NAMES[number - 1]}</span>
           {entries.length > 0 ? (
             <span className="text-xs text-slate-500">
               {entries.length} items · {mealCal} kcal · P:{mealTotal.protein.toFixed(0)}g C:{mealTotal.carbs.toFixed(0)}g F:{mealTotal.fat.toFixed(0)}g
@@ -96,6 +117,7 @@ function MealSlot({ number, entries, foods, onAdd, onDelete, onMove, isExpanded,
 
       {isExpanded && (
         <div className="px-4 pb-4 border-t border-slate-700">
+          {/* Logged entries */}
           {entries.length > 0 && (
             <div className="mt-3 mb-3 space-y-1">
               {entries.map(e => (
@@ -131,82 +153,73 @@ function MealSlot({ number, entries, foods, onAdd, onDelete, onMove, isExpanded,
             </div>
           )}
 
-          <div className="flex gap-2 mb-3 mt-3">
-            <button
-              onClick={() => setMode('preset')}
-              className={`text-xs px-3 py-1 rounded-full transition-colors ${mode === 'preset' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}
-            >
-              Pick from list
-            </button>
-            <button
-              onClick={() => setMode('freetext')}
-              className={`text-xs px-3 py-1 rounded-full transition-colors ${mode === 'freetext' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}
-            >
-              ✨ Free text (AI)
-            </button>
-          </div>
-
-          {mode === 'preset' ? (
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <input
-                  type="text"
-                  placeholder="Search foods..."
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  className="w-full bg-slate-700 text-slate-200 text-sm rounded-lg px-3 py-2 mb-2 placeholder-slate-500 outline-none focus:ring-1 focus:ring-blue-500"
-                />
-                <select
-                  value={selectedFood}
-                  onChange={e => setSelectedFood(e.target.value)}
-                  className="w-full bg-slate-700 text-slate-200 text-sm rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-blue-500"
-                >
-                  <option value="">-- Select food --</option>
-                  {filtered.map(f => (
-                    <option key={f.id} value={f.id}>
-                      {f.name} ({f.serving_label}) — P:{f.protein}g
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex flex-col gap-2">
-                <input
-                  type="number"
-                  min="0.5"
-                  step="0.5"
-                  value={servings}
-                  onChange={e => setServings(parseFloat(e.target.value) || 1)}
-                  className="w-16 bg-slate-700 text-slate-200 text-sm rounded-lg px-2 py-2 text-center outline-none focus:ring-1 focus:ring-blue-500"
-                  title="Servings"
-                />
-                <button
-                  onClick={handleAddPreset}
-                  disabled={!selectedFood || adding}
-                  className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-sm px-3 py-2 rounded-lg transition-colors"
-                >
-                  {adding ? '...' : 'Add'}
-                </button>
-              </div>
-            </div>
-          ) : (
+          {/* Unified input */}
+          <div className="mt-3 relative" ref={dropdownRef}>
             <div className="flex gap-2">
               <input
+                ref={inputRef}
                 type="text"
-                placeholder="e.g. 300g boiled chicken and a bowl of soup"
-                value={freeText}
-                onChange={e => setFreeText(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleParseFreeText()}
+                placeholder="Search food or describe a meal…"
+                value={text}
+                onChange={e => { setText(e.target.value); if (selectedFood) setSelectedFood(null); }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') selectedFood ? handleAddPreset() : handleParseAI();
+                  if (e.key === 'Escape') handleClear();
+                }}
                 className="flex-1 bg-slate-700 text-slate-200 text-sm rounded-lg px-3 py-2 placeholder-slate-500 outline-none focus:ring-1 focus:ring-blue-500"
               />
-              <button
-                onClick={handleParseFreeText}
-                disabled={!freeText.trim() || parsing}
-                className="bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white text-sm px-3 py-2 rounded-lg transition-colors whitespace-nowrap"
-              >
-                {parsing ? '⏳' : '✨ Parse'}
-              </button>
+
+              {selectedFood ? (
+                <>
+                  <input
+                    type="number"
+                    min="0.5"
+                    step="0.5"
+                    value={servings}
+                    onChange={e => setServings(parseFloat(e.target.value) || 1)}
+                    className="w-14 bg-slate-700 text-slate-200 text-sm rounded-lg px-2 py-2 text-center outline-none focus:ring-1 focus:ring-blue-500"
+                    title="Servings"
+                  />
+                  <button
+                    onClick={handleAddPreset}
+                    disabled={adding}
+                    className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-sm px-3 py-2 rounded-lg transition-colors"
+                  >
+                    {adding ? '…' : 'Add'}
+                  </button>
+                  <button
+                    onClick={handleClear}
+                    className="text-slate-500 hover:text-white text-lg leading-none px-1"
+                    title="Clear"
+                  >×</button>
+                </>
+              ) : (
+                <button
+                  onClick={handleParseAI}
+                  disabled={!text.trim() || parsing}
+                  className="bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white text-sm px-3 py-2 rounded-lg transition-colors whitespace-nowrap"
+                >
+                  {parsing ? '⏳' : '✨ AI'}
+                </button>
+              )}
             </div>
-          )}
+
+            {/* Preset dropdown */}
+            {filtered.length > 0 && (
+              <div className="absolute top-full left-0 right-0 z-20 mt-1 bg-slate-700 rounded-lg shadow-xl overflow-hidden max-h-52 overflow-y-auto">
+                {filtered.map(f => (
+                  <button
+                    key={f.id}
+                    onMouseDown={e => { e.preventDefault(); handleSelectFood(f); }}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-slate-600 transition-colors flex items-center justify-between gap-3"
+                  >
+                    <span className="text-slate-200 truncate">{f.name}</span>
+                    <span className="text-slate-500 text-xs shrink-0">{f.serving_label} · P:{f.protein}g</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
