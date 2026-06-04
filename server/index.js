@@ -1,4 +1,5 @@
 require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const { init } = require('./db');
@@ -14,6 +15,13 @@ app.use('/api/summaries', require('./routes/summaries'));
 app.use('/api/exercise', require('./routes/exercise'));
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
+
+// Serve built React client in production (after all API routes)
+if (process.env.NODE_ENV === 'production') {
+  const clientDist = path.join(__dirname, '../client/dist');
+  app.use(express.static(clientDist));
+  app.get('*', (req, res) => res.sendFile(path.join(clientDist, 'index.html')));
+}
 
 const PORT = process.env.PORT || 3001;
 
