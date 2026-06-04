@@ -1,63 +1,9 @@
-const Database = require('better-sqlite3');
-const path = require('path');
+const { Pool } = require('pg');
 
-const db = new Database(path.join(__dirname, 'meals.db'));
-
-db.pragma('journal_mode = WAL');
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS days (
-    id INTEGER PRIMARY KEY,
-    date TEXT UNIQUE,
-    day_type TEXT,
-    created_at TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS meals (
-    id INTEGER PRIMARY KEY,
-    day_id INTEGER,
-    meal_number INTEGER,
-    food_name TEXT,
-    protein REAL,
-    carbs REAL,
-    fat REAL,
-    fiber REAL,
-    serving_note TEXT,
-    created_at TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS foods (
-    id INTEGER PRIMARY KEY,
-    name TEXT,
-    serving_label TEXT,
-    protein REAL,
-    carbs REAL,
-    fat REAL,
-    fiber REAL,
-    is_custom INTEGER DEFAULT 0
-  );
-
-  CREATE TABLE IF NOT EXISTS summaries (
-    id INTEGER PRIMARY KEY,
-    day_id INTEGER UNIQUE,
-    protein_total REAL,
-    carbs_total REAL,
-    fat_total REAL,
-    fiber_total REAL,
-    protein_hit INTEGER,
-    verdict TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS exercise (
-    id INTEGER PRIMARY KEY,
-    day_id INTEGER,
-    modality TEXT,
-    pace INTEGER,
-    duration_minutes INTEGER,
-    calories_burned INTEGER,
-    created_at TEXT
-  );
-`);
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+});
 
 const ALL_PRESETS = [
   // ── Proteins ──────────────────────────────────────────────
@@ -143,23 +89,72 @@ const ALL_PRESETS = [
   ['Oyster sauce',                  '1 tbsp',  0,  4,  0, 0],
 ];
 
-const insert = db.prepare(`
-  INSERT INTO foods (name, serving_label, protein, carbs, fat, fiber, is_custom)
-  VALUES (?, ?, ?, ?, ?, ?, 0)
-`);
+async function init() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS days (
+      id SERIAL PRIMARY KEY,
+      date TEXT UNIQUE,
+      day_type TEXT,
+      created_at TEXT
+    );
 
-const existingNames = new Set(
-  db.prepare('SELECT name FROM foods WHERE is_custom = 0').all().map(r => r.name)
-);
+    CREATE TABLE IF NOT EXISTS meals (
+      id SERIAL PRIMARY KEY,
+      day_id INTEGER,
+      meal_number INTEGER,
+      food_name TEXT,
+      protein REAL,
+      carbs REAL,
+      fat REAL,
+      fiber REAL,
+      serving_note TEXT,
+      created_at TEXT
+    );
 
-const addMissing = db.transaction(() => {
+    CREATE TABLE IF NOT EXISTS foods (
+      id SERIAL PRIMARY KEY,
+      name TEXT,
+      serving_label TEXT,
+      protein REAL,
+      carbs REAL,
+      fat REAL,
+      fiber REAL,
+      is_custom INTEGER DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS summaries (
+      id SERIAL PRIMARY KEY,
+      day_id INTEGER UNIQUE,
+      protein_total REAL,
+      carbs_total REAL,
+      fat_total REAL,
+      fiber_total REAL,
+      protein_hit INTEGER,
+      verdict TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS exercise (
+      id SERIAL PRIMARY KEY,
+      day_id INTEGER,
+      modality TEXT,
+      pace INTEGER,
+      duration_minutes INTEGER,
+      calories_burned INTEGER,
+      created_at TEXT
+    );
+  `);
+
+  const { rows } = await pool.query('SELECT name FROM foods WHERE is_custom = 0');
+  const existingNames = new Set(rows.map(r => r.name));
+
   for (const [name, serving_label, protein, carbs, fat, fiber] of ALL_PRESETS) {
     if (!existingNames.has(name)) {
-      insert.run(name, serving_label, protein, carbs, fat, fiber);
+      await pool.query(
+        'INSERT INTO foods (name, serving_label, protein, carbs, fat, fiber, is_custom) VALUES ($1, $2, $3, $4, $5, $6, 0)',
+        [name, serving_label, protein, carbs, fat, fiber]
+      );
     }
   }
-});
+}
 
-addMissing();
-
-module.exports = db;
+module.exports = { pool, init };

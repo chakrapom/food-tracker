@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Anthropic = require('@anthropic-ai/sdk');
-const db = require('../db');
+const { pool } = require('../db');
 
 const client = new Anthropic();
 
@@ -42,7 +42,9 @@ router.post('/', async (req, res) => {
   const calTarget = calorie_target || 1800;
   const remainingCal = Math.max(0, calTarget - netCal);
 
-  const foods = db.prepare('SELECT name, serving_label, protein, carbs, fat, fiber FROM foods ORDER BY name').all();
+  const { rows: foods } = await pool.query(
+    'SELECT name, serving_label, protein, carbs, fat, fiber FROM foods ORDER BY name'
+  );
   const foodList = foods.map(f =>
     `- ${f.name} (${f.serving_label}): ${f.protein}g protein, ${f.carbs}g carbs, ${f.fat}g fat, ${f.fiber}g fiber`
   ).join('\n');
@@ -105,7 +107,6 @@ router.post('/parse', async (req, res) => {
   let systemPrompt;
 
   if (lookup) {
-    // Simple nutritional lookup — no database context, used for adding new foods
     systemPrompt = `You are a nutrition database for a Vietnamese user. Given a food name and serving size, return accurate macro values.
 Portion sizing rules:
 - For items measured in cups (rice, vegetables, soups): apply a 0.8 multiplier to USDA values — Vietnamese portions are smaller than US standard cups
@@ -114,7 +115,9 @@ Portion sizing rules:
 Each item: { "food_name": string, "protein": number, "carbs": number, "fat": number, "fiber": number, "serving_note": string }
 Return ONLY valid JSON array, no explanation, no markdown.`;
   } else {
-    const foods = db.prepare('SELECT name, serving_label, protein, carbs, fat, fiber FROM foods ORDER BY name').all();
+    const { rows: foods } = await pool.query(
+      'SELECT name, serving_label, protein, carbs, fat, fiber FROM foods ORDER BY name'
+    );
     const foodList = foods.map(f =>
       `- ${f.name} (${f.serving_label}): protein ${f.protein}g, carbs ${f.carbs}g, fat ${f.fat}g, fiber ${f.fiber}g`
     ).join('\n');

@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../db');
+const { pool } = require('../db');
 
 // MET-based rates for 80 kg body weight: (MET × 80 × 3.5) / 200
 const CAL_PER_MIN = {
@@ -30,47 +30,51 @@ function calcBurn(modality, pace, duration) {
   return Math.round((CAL_PER_MIN[key] || 5) * duration);
 }
 
-router.get('/week', (req, res) => {
-  const rows = db.prepare(`
+router.get('/week', async (req, res) => {
+  const { rows } = await pool.query(`
     SELECT d.date,
       COALESCE(SUM(e.duration_minutes), 0) as total_minutes,
       COALESCE(SUM(e.calories_burned),  0) as total_calories
     FROM days d
     LEFT JOIN exercise e ON e.day_id = d.id
-    WHERE d.date >= date('now', '-6 days')
-    GROUP BY d.id
+    WHERE d.date >= to_char(CURRENT_DATE - INTERVAL '6 days', 'YYYY-MM-DD')
+    GROUP BY d.id, d.date
     ORDER BY d.date ASC
-  `).all();
+  `);
   res.json(rows);
 });
 
-router.get('/:date', (req, res) => {
-  const day = db.prepare('SELECT * FROM days WHERE date = ?').get(req.params.date);
-  if (!day) return res.json([]);
-  res.json(db.prepare('SELECT * FROM exercise WHERE day_id = ? ORDER BY created_at ASC').all(day.id));
+router.get('/:date', async (req, res) => {
+  const { rows: dayRows } = await pool.query('SELECT * FROM days WHERE date = $1', [req.params.date]);
+  if (dayRows.length === 0) return res.json([]);
+  const { rows } = await pool.query(
+    'SELECT * FROM exercise WHERE day_id = $1 ORDER BY created_at ASC',
+    [dayRows[0].id]
+  );
+  res.json(rows);
 });
 
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const { date, modality, pace, duration_minutes } = req.body;
   if (!date || !modality || !duration_minutes) {
     return res.status(400).json({ error: 'date, modality, and duration_minutes required' });
   }
-  const day = db.prepare('SELECT * FROM days WHERE date = ?').get(date);
-  if (!day) return res.status(404).json({ error: 'Set up the day first before logging exercise.' });
+  const { rows: dayRows } = await pool.query('SELECT * FROM days WHERE date = $1', [date]);
+  if (dayRows.length === 0) return res.status(404).json({ error: 'Set up the day first before logging exercise.' });
 
   const calories_burned = calcBurn(modality, pace, duration_minutes);
-  const result = db.prepare(`
+  const { rows } = await pool.query(`
     INSERT INTO exercise (day_id, modality, pace, duration_minutes, calories_burned, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(day.id, modality, pace ?? null, duration_minutes, calories_burned, new Date().toISOString());
-
-  res.json(db.prepare('SELECT * FROM exercise WHERE id = ?').get(result.lastInsertRowid));
+    VALUES ($1, $2, $3, $4, $5, $6)
+    RETURNING *
+  `, [dayRows[0].id, modality, pace ?? null, duration_minutes, calories_burned, new Date().toISOString()]);
+  res.json(rows[0]);
 });
 
-router.delete('/:id', (req, res) => {
-  const ex = db.prepare('SELECT * FROM exercise WHERE id = ?').get(req.params.id);
-  if (!ex) return res.status(404).json({ error: 'Not found' });
-  db.prepare('DELETE FROM exercise WHERE id = ?').run(req.params.id);
+router.delete('/:id', async (req, res) => {
+  const { rows } = await pool.query('SELECT * FROM exercise WHERE id = $1', [req.params.id]);
+  if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
+  await pool.query('DELETE FROM exercise WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 });
 
