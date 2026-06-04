@@ -5,6 +5,10 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
 });
 
+pool.on('connect', client => {
+  client.query("SET timezone = 'Asia/Ho_Chi_Minh'");
+});
+
 const ALL_PRESETS = [
   // ── Proteins ──────────────────────────────────────────────
   ['Chicken breast (boiled)',       '100g',        22,  0,  2, 0],
