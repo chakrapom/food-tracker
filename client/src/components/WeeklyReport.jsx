@@ -42,8 +42,10 @@ function weekRange(days) {
   return `${dateShort(days[0].date)} – ${dateShort(days[days.length - 1].date)}`;
 }
 
-function HitDot({ hit }) {
-  return <div className={`w-2.5 h-2.5 rounded-full ${hit ? 'bg-emerald-500' : 'bg-slate-600'}`} />;
+function HitDot({ value, target, noExceed = false }) {
+  if (!noExceed && value > target * 1.1) return <span className="text-red-500 text-xs leading-none">▲</span>;
+  if (noExceed ? value < target : value < target * 0.9) return <div className="w-2.5 h-2.5 rounded-full bg-slate-500" />;
+  return <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />;
 }
 
 // n = days with data, denom = always 7
@@ -204,7 +206,7 @@ export default function WeeklyReport({ onSelectDate, caloriePreset }) {
                         {calDays.map(d => (
                           <td key={d.date} className="text-center py-1 px-1">
                             <div className="flex flex-col items-center gap-0.5">
-                              <HitDot hit={d.calHit} />
+                              <HitDot value={d.cal} target={d.calTgt} />
                               <span className="text-slate-500">{d.cal}</span>
                             </div>
                           </td>
@@ -217,7 +219,7 @@ export default function WeeklyReport({ onSelectDate, caloriePreset }) {
                           {data.days.map(d => (
                             <td key={d.date} className="text-center py-1 px-1">
                               <div className="flex flex-col items-center gap-0.5">
-                                <HitDot hit={d.hit[m.key]} />
+                                <HitDot value={d[m.key]} target={d.targets[m.key]} />
                                 <span className="text-slate-500">{d[m.key].toFixed(0)}g</span>
                               </div>
                             </td>
@@ -230,7 +232,7 @@ export default function WeeklyReport({ onSelectDate, caloriePreset }) {
                         {data.days.map(d => (
                           <td key={d.date} className="text-center py-1 px-1">
                             <div className="flex flex-col items-center gap-0.5">
-                              <HitDot hit={(d.exercise_minutes || 0) >= 30} />
+                              <HitDot value={d.exercise_minutes || 0} target={30} noExceed />
                               <span className="text-slate-500">{d.exercise_minutes || 0}m</span>
                             </div>
                           </td>
