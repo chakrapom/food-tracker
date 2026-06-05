@@ -29,6 +29,10 @@ async function migrate() {
   try {
     await client.query('BEGIN');
 
+    // Clear any data already in Railway (e.g. from testing after deploy) so
+    // local SQLite IDs don't collide with rows the app already created.
+    await client.query('TRUNCATE summaries, exercise, meals, days RESTART IDENTITY');
+
     // ── days ────────────────────────────────────────────────────────────────
     const days = sqlite.prepare('SELECT * FROM days ORDER BY id ASC').all();
     console.log(`Migrating ${days.length} days...`);
